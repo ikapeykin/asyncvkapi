@@ -2,18 +2,11 @@ import aiohttp
 import asyncio
 import time
 import json
+import ssl
 
 
 CALL_INTERVAL = 0.05
 MAX_CALLS_IN_EXECUTE = 25
-
-
-class MessageReceiver:
-    def __init__(self, api, get_dialogs_interval=-1):
-        self.api = api
-        self.get_dialogs_interval = get_dialogs_interval
-
-
 
 
 class DelayedCall:
@@ -38,7 +31,7 @@ class DelayedCall:
 class AsyncVkApi:
     api_version = '5.95'
 
-    def __init__(self, group_id, token='', token_file=''):
+    def __init__(self, group_id, event_loop, token='', token_file=''):
         self.next_call = 0
         self.longpoll = {}
         self.delayed_list = []
@@ -48,6 +41,9 @@ class AsyncVkApi:
         self.group_id = group_id
         self.token = token
         self.token_file = token_file
+
+        self.event_loop = asyncio.get_event_loop()
+        event_loop.create_task(self.sync())
 
     def __getattr__(self, item):
         handler = self
@@ -70,12 +66,10 @@ class AsyncVkApi:
 
                         res = await self.delayed(**dp)
                         res.callback(cb)
-                        # await handler.sync()
+                        await handler.sync()
                         return response
 
                     async def delayed(self, *, _once=False, **dp):
-                        if len(handler.delayed_list) >= handler.max_delayed:
-                            await handler.sync(True)
                         dc = DelayedCall(self.method, dp)
                         if not _once or dc not in handler.delayed_list:
                             handler.delayed_list.append(dc)
@@ -111,22 +105,16 @@ class AsyncVkApi:
     def encodeApiCall(s):
         return "API." + s.method + '(' + json.dumps(s.params, ensure_ascii=False) + ')'
 
-    async def sync(self, once=False):
-        while True:
-            dl = self.delayed_list[:25]
-            self.delayed_list = self.delayed_list[25:]
+    async def sync(self):
+        dl = self.delayed_list[:25]
+        self.delayed_list = self.delayed_list[25:]
 
-            if not dl:
-                return
+        if len(dl) == 1:
+            dc = dl[0]
+            response = await self.apiCall(dc.method, dc.params, dc.retry)
+            dc.called(response)
 
-            if len(dl) == 1:
-                dc = dl[0]
-                response = await self.apiCall(dc.method, dc.params, dc.retry)
-                dc.called(response)
-                if once:
-                    return
-                continue
-
+        elif len(dl):
             query = ['return[']
             for num, i in enumerate(dl):
                 query.append(self.encodeApiCall(i) + ',')
@@ -134,8 +122,8 @@ class AsyncVkApi:
             query = ''.join(query)
             response = await self.execute(query)
 
-            if once:
-                return
+        await asyncio.sleep(CALL_INTERVAL)
+        self.event_loop.create_task(self.sync())
 
     async def apiCall(self, method, params, retry=False, full_response=False):
         current_time = time.time()
@@ -154,38 +142,60 @@ class AsyncVkApi:
             async with session.post(url, data=post_params) as resp:
                 json_string = await resp.json()
                 print(json_string)
-        return json_string
+
+        return json_string['response']
+
+    async def initLongpoll(self):
+        r = await self.groups.getLongPollServer(group_id=self.group_id)
+
+        if not r:
+            await self.initLongpoll()
+
+        self.longpoll = {'server': r['server'], 'key': r['key'], 'ts': self.longpoll.get('ts') or r['ts']}
+
+    async def getLongpoll(self):
+        if not self.longpoll.get('server'):
+            await self.initLongpoll()
+
+        url = '{}?act=a_check&key={}&ts={}&wait=25&'.format(
+            self.longpoll['server'], self.longpoll['key'], self.longpoll['ts']
+        )
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=30, ssl=False) as resp:
+                    json_string = await resp.json()
+
+            data_array = json_string
+
+            if 'ts' in data_array:
+                self.longpoll['ts'] = data_array['ts']
+
+            if 'updates' in data_array:
+                print(data_array['updates'])
+
+            elif data_array['failed'] != 1:
+                await self.initLongpoll()
+
+        except Exception as e:
+            pass
+
+        await asyncio.sleep(CALL_INTERVAL*2)
+        self.event_loop.create_task(self.getLongpoll())
 
 
-api = AsyncVkApi(group_id=176630236,
-                 token='ccc50800ff82bd80c268b329b3fdd27cc2cdc52bd7a66a3b59c8cc6ba92e8c2e707f0bc0a04ed5aa889a0',)
+
+
 loop = asyncio.get_event_loop()
+api = AsyncVkApi(group_id=176630236,
+                 token='ccc50800ff82bd80c268b329b3fdd27cc2cdc52bd7a66a3b59c8cc6ba92e8c2e707f0bc0a04ed5aa889a0',
+                 event_loop=loop)
 
-counter = 0
+loop.create_task(api.getLongpoll())
 
+async def test():
+    print('Something just')
+    await api.messages.send.delayed(peer_id=334626257, message='Its work))', random_id=0)
 
-def cb(resp, req):
-    print(resp, req)
-
-
-async def test(user_id):
-    global counter
-    for i in range(0, 25):
-        await api.messages.send.delayed(peer_id=user_id, message=counter, random_id=0).cb(cb)
-        counter += 1
-
-
-t_s = time.time()
-
-tasks = []
-for i in range(0, 20):
-    tasks.append(loop.create_task(test(279494346)))
-    tasks.append(loop.create_task(test(279494346)))
-
-    tasks.append(api.sync())
-loop.run_until_complete(asyncio.wait(tasks))
-
-print(time.time() - t_s)
-
-
-
+loop.create_task(test())
+loop.run_forever()
