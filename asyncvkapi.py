@@ -30,7 +30,7 @@ class DelayedCall:
 class AsyncVkApi:
     api_version = '5.95'
 
-    def __init__(self, group_id, event_loop, token='', token_file=''):
+    def __init__(self, group_id, token='', token_file=''):
         self.next_call = 0
         self.longpoll = {}
         self.longpoll_queue = []
@@ -43,7 +43,7 @@ class AsyncVkApi:
         self.token_file = token_file
 
         self.event_loop = asyncio.get_event_loop()
-        event_loop.create_task(self.sync())
+        self.event_loop.create_task(self.sync())
 
     def __getattr__(self, item):
         handler = self
@@ -141,7 +141,6 @@ class AsyncVkApi:
         async with aiohttp.ClientSession() as session:
             async with session.post(url, data=post_params) as resp:
                 json_string = await resp.json()
-                print(json_string)
 
         return json_string['response']
 
@@ -169,7 +168,7 @@ class AsyncVkApi:
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=30, ssl=False) as resp:
+                async with session.get(url, timeout=30) as resp:
                     json_string = await resp.json()
 
             data_array = json_string
@@ -204,5 +203,5 @@ class AsyncVkApi:
         except Exception as e:
             pass
 
-        await asyncio.sleep(CALL_INTERVAL*2)
+        await asyncio.sleep(CALL_INTERVAL)
         self.event_loop.create_task(self.getLongpoll())
