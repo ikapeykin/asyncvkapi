@@ -2,7 +2,6 @@ import aiohttp
 import asyncio
 import time
 import json
-import ssl
 
 
 CALL_INTERVAL = 0.05
@@ -34,6 +33,7 @@ class AsyncVkApi:
     def __init__(self, group_id, event_loop, token='', token_file=''):
         self.next_call = 0
         self.longpoll = {}
+        self.longpoll_queue = []
         self.delayed_list = []
         self.max_delayed = 25
         self.event_loop = asyncio.get_event_loop()
@@ -145,6 +145,12 @@ class AsyncVkApi:
 
         return json_string['response']
 
+    def get_messages(self):
+        _longpoll_queue = self.longpoll_queue[:]
+        self.longpoll_queue = []
+
+        return _longpoll_queue
+
     async def initLongpoll(self):
         r = await self.groups.getLongPollServer(group_id=self.group_id)
 
@@ -172,7 +178,25 @@ class AsyncVkApi:
                 self.longpoll['ts'] = data_array['ts']
 
             if 'updates' in data_array:
-                print(data_array['updates'])
+                for record in data_array['updates']:
+                    if record['type'] == 'message_new':  # new message
+                        msg = {}
+                        feed = record.get('object')
+
+                        if not msg.get('chat_id'):
+                            msg['chat_id'] = feed.get('from_id')
+
+                        msg['body'] = feed.get('text')
+                        msg['chat_id'] = feed.get('peer_id')
+                        msg['ref'] = feed.get('ref')
+                        msg['ref_source'] = feed.get('ref_source')
+                        msg['payload'] = feed.get('payload')
+                        msg['user_id'] = feed.get('from_id')
+                        msg['id'] = feed.get('id')
+                        msg['attachments'] = feed.get('attachments')
+
+                        self.longpoll_queue.append(msg)
+
 
             elif data_array['failed'] != 1:
                 await self.initLongpoll()
@@ -182,20 +206,3 @@ class AsyncVkApi:
 
         await asyncio.sleep(CALL_INTERVAL*2)
         self.event_loop.create_task(self.getLongpoll())
-
-
-
-
-loop = asyncio.get_event_loop()
-api = AsyncVkApi(group_id=176630236,
-                 token='ccc50800ff82bd80c268b329b3fdd27cc2cdc52bd7a66a3b59c8cc6ba92e8c2e707f0bc0a04ed5aa889a0',
-                 event_loop=loop)
-
-loop.create_task(api.getLongpoll())
-
-async def test():
-    print('Something just')
-    await api.messages.send.delayed(peer_id=334626257, message='Its work))', random_id=0)
-
-loop.create_task(test())
-loop.run_forever()
