@@ -33,10 +33,8 @@ class AsyncVkApi:
     def __init__(self, group_id, token='', token_file=''):
         self.next_call = 0
         self.longpoll = {}
-        self.longpoll_queue = []
         self.delayed_list = []
         self.max_delayed = 25
-        self.event_loop = asyncio.get_event_loop()
 
         self.group_id = group_id
         self.token = token
@@ -144,12 +142,6 @@ class AsyncVkApi:
 
         return json_string['response']
 
-    def get_messages(self):
-        _longpoll_queue = self.longpoll_queue[:]
-        self.longpoll_queue = []
-
-        return _longpoll_queue
-
     async def initLongpoll(self):
         r = await self.groups.getLongPollServer(group_id=self.group_id)
 
@@ -159,6 +151,8 @@ class AsyncVkApi:
         self.longpoll = {'server': r['server'], 'key': r['key'], 'ts': self.longpoll.get('ts') or r['ts']}
 
     async def getLongpoll(self):
+        longpoll_queue = []
+
         if not self.longpoll.get('server'):
             await self.initLongpoll()
 
@@ -194,7 +188,7 @@ class AsyncVkApi:
                         msg['id'] = feed.get('id')
                         msg['attachments'] = feed.get('attachments')
 
-                        self.longpoll_queue.append(msg)
+                        longpoll_queue.append(msg)
 
 
             elif data_array['failed'] != 1:
@@ -203,5 +197,4 @@ class AsyncVkApi:
         except Exception as e:
             pass
 
-        await asyncio.sleep(CALL_INTERVAL)
-        self.event_loop.create_task(self.getLongpoll())
+        return longpoll_queue
