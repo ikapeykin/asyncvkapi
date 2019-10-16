@@ -8,6 +8,11 @@ CALL_INTERVAL = 0.05
 MAX_CALLS_IN_EXECUTE = 25
 
 
+class VkMethod:
+    def __init__(self, method):
+        self.method = method
+
+
 class DelayedCall:
     def __init__(self, method, params):
         self.method = method
@@ -15,7 +20,7 @@ class DelayedCall:
         self.retry = False
         self.callback_func = None
 
-    def callback(self, func):
+    async def callback(self, func):
         self.callback_func = func
         return self
 
@@ -62,35 +67,14 @@ class AsyncVkApi:
                             nonlocal response
                             response = resp
 
-                        res = await self.delayed(**dp)
-                        res.callback(cb)
-                        await handler.sync()
+                        res = self.delayed(**dp).callback(cb)
                         return response
 
-                    async def delayed(self, *, _once=False, **dp):
+                    def delayed(self, *, _once=False, **dp):
                         dc = DelayedCall(self.method, dp)
                         if not _once or dc not in handler.delayed_list:
                             handler.delayed_list.append(dc)
                         return dc
-
-                    async def walk(self, callback, **dp):
-                        async def cb(req, resp):
-                            callback(req, resp)
-                            if resp is None:
-                                return
-                            if 'next_from' in resp:
-                                if resp['next_from']:
-                                    req['start_from'] = resp['next_from']
-                                    res = await self.delayed(**req)
-                                    res.callback(cb)
-                            elif 'count' in resp and 'count' in req and req['count'] + req.get('offset', 0) < resp['count']:
-                                req['offset'] = req.get('offset', 0) + req['count']
-                                res = await self.delayed(**req)
-                                res.callback(cb)
-
-                        res = await self.delayed(**dp)
-                        res.callback(cb)
-                        return handler
 
                 return _MethodWrapper(self.group + '.' + subitem)
 
@@ -119,6 +103,10 @@ class AsyncVkApi:
             query.append('];')
             query = ''.join(query)
             response = await self.execute(query)
+
+            if 'response' in response:
+                for dc, r in zip(dl, response['response']):
+                    dc.called(r)
 
         await asyncio.sleep(CALL_INTERVAL)
         self.event_loop.create_task(self.sync())
@@ -198,3 +186,5 @@ class AsyncVkApi:
             pass
 
         return longpoll_queue
+
+
