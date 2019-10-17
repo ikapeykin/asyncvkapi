@@ -20,16 +20,16 @@ class DelayedCall:
         self.retry = False
         self.callback_func = None
 
-    async def callback(self, func):
+    def __eq__(self, a):
+        return self.method == a.method and self.params == a.params and self.callback_func is None and a.callback_func is None
+
+    def callback(self, func):
         self.callback_func = func
         return self
 
     def called(self, response):
         if self.callback_func:
             self.callback_func(self.params, response)
-
-    def __eq__(self, a):
-        return self.method == a.method and self.params == a.params and self.callback_func is None and a.callback_func is None
 
 
 class AsyncVkApi:
@@ -67,10 +67,12 @@ class AsyncVkApi:
                             nonlocal response
                             response = resp
 
-                        res = self.delayed(**dp).callback(cb)
+                        res = await self.delayed(**dp)
+                        res.callback(cb)
+                        await handler.sync()
                         return response
 
-                    def delayed(self, *, _once=False, **dp):
+                    async def delayed(self, *, _once=False, **dp):
                         dc = DelayedCall(self.method, dp)
                         if not _once or dc not in handler.delayed_list:
                             handler.delayed_list.append(dc)
@@ -183,7 +185,7 @@ class AsyncVkApi:
                 await self.initLongpoll()
 
         except Exception as e:
-            pass
+            pass  # This shit for 503 error VK LongPoll
 
         return longpoll_queue
 
