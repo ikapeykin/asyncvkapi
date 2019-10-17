@@ -123,7 +123,7 @@ class AsyncVkApi:
 
         params['v'] = self.api_version
 
-        url = 'https://api.vk.com/method/' + method + '?access_token=' + self.token
+        url = f'https://api.vk.com/method/{method}?access_token={self.token}'
         post_params = params
 
         async with aiohttp.ClientSession() as session:
