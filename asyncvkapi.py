@@ -3,31 +3,23 @@ import asyncio
 import time
 import json
 
-
 CALL_INTERVAL = 0.05
 MAX_CALLS_IN_EXECUTE = 25
 
 
-class VkMethodDispatcher:
-    class _GroupWrapper:
-        def __init__(self, group, dispatcher):
-            self.group = group
-            self.dispatcher = dispatcher
 
-        def __getattr__(self, subitem):
-            def delayed(**kwargs):
-                print('Called')
-
-            def call(**kwargs):
-                return self.dispatcher.apiCall(self.group + '.' + subitem, kwargs)
-
-            return call
+class MethodsWrapper:
+    def __init__(self, callback, method=None, old_methods=[]):
+        self._methods = old_methods
+        if method is not None:
+            self._methods.append(method)
+        self.callback = callback
 
     def __getattr__(self, item):
-        return self._GroupWrapper(item, self)
+        return MethodsWrapper(self.callback, item, self._methods)
 
-    def apiCall(self, method, kwargs):
-        raise NotImplementedError
+    def __call__(self, *args, **kwargs):
+        return self.callback('.'.join(self._methods), *args, **kwargs)
 
 
 class DelayedCall:
@@ -38,7 +30,8 @@ class DelayedCall:
         self.callback_func = None
 
     def __eq__(self, a):
-        return self.method == a.method and self.params == a.params and self.callback_func is None and a.callback_func is None
+        return self.method == a.method and self.params == a.params and \
+               self.callback_func is None and a.callback_func is None
 
     def callback(self, func):
         self.callback_func = func
@@ -65,39 +58,11 @@ class AsyncVkApi(VkMethodDispatcher):
         self.event_loop = asyncio.get_event_loop()
         self.event_loop.create_task(self.sync())
 
-    # def __getattr__(self, item):
-    #     handler = self
-    #
-    #     class _GroupWrapper:
-    #         def __init__(self, group):
-    #             self.group = group
-    #
-    #         def __getattr__(self, subitem):
-    #             class _MethodWrapper:
-    #                 def __init__(self, method):
-    #                     self.method = method
-    #
-    #                 async def __call__(self, **dp):
-    #                     response = None
-    #
-    #                     def cb(req, resp):
-    #                         nonlocal response
-    #                         response = resp
-    #
-    #                     res = await self.delayed(**dp)
-    #                     res.callback(cb)
-    #                     await handler.sync()
-    #                     return response
-    #
-    #                 async def delayed(self, *, _once=False, **dp):
-    #                     dc = DelayedCall(self.method, dp)
-    #                     if not _once or dc not in handler.delayed_list:
-    #                         handler.delayed_list.append(dc)
-    #                     return dc
-    #
-    #             return _MethodWrapper(self.group + '.' + subitem)
-    #
-    #     return _GroupWrapper(item)
+    def __getattr__(self, item):
+        return MethodsWrapper(self.call, item)
+
+    def call(method, **kwargs):
+        return self.dispatcher.apiCall(method, kwargs)
 
     async def execute(self, code):
         return await self.apiCall('execute', {"code": code})
@@ -155,7 +120,8 @@ class AsyncVkApi(VkMethodDispatcher):
         if not r:
             await self.initLongpoll()
 
-        self.longpoll = {'server': r['server'], 'key': r['key'], 'ts': self.longpoll.get('ts') or r['ts']}
+        self.longpoll = {'server': r['server'], 'key': r['key'],
+                         'ts': self.longpoll.get('ts') or r['ts']}
 
     async def getLongpoll(self):
         longpoll_queue = []
@@ -165,7 +131,7 @@ class AsyncVkApi(VkMethodDispatcher):
 
         url = '{}?act=a_check&key={}&ts={}&wait=25&'.format(
             self.longpoll['server'], self.longpoll['key'], self.longpoll['ts']
-        )
+            )
 
         try:
             async with aiohttp.ClientSession() as session:
