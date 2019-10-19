@@ -8,41 +8,26 @@ CALL_INTERVAL = 0.05
 MAX_CALLS_IN_EXECUTE = 25
 
 
-class MethodsWrapper:
-    def __init__(self, foreign_f, method=None, old_methods=[]):
-        self._methods = old_methods
-        if method is not None:
-            self._methods.extend([method])
-        self.foreign_f = foreign_f
+class VkMethodDispatcher:
+    class _GroupWrapper:
+        def __init__(self, group, dispatcher):
+            self.group = group
+            self.dispatcher = dispatcher
+
+        def __getattr__(self, subitem):
+            def delayed(**kwargs):
+                print('Called')
+
+            def call(**kwargs):
+                return self.dispatcher.apiCall(self.group + '.' + subitem, kwargs)
+
+            return call
 
     def __getattr__(self, item):
-        new = MethodsWrapper(self.foreign_f, item, self._methods)
-        return new
+        return self._GroupWrapper(item, self)
 
-    def __call__(self, *args, **kwargs):
-        return self.foreign_f('.'.join(self._methods), *args, **kwargs)
-
-
-class MainClass:
-
-    """
-    Главный класс с логикой.
-    Можно пихать сюда все, что угодно
-    """
-    def __init__(self, x, y, z):
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def call_method(self, method, *args, **kwargs):
-        """
-        Метод, который будет вызываться из метод-врапперов
-        """
-        print(f'Method is <{method}>', args, kwargs)
-
-    def __getattr__(self, item):
-        return MethodsWrapper(self.call_method, item)
-
+    def apiCall(self, method, kwargs):
+        raise NotImplementedError
 
 
 class DelayedCall:
@@ -64,7 +49,7 @@ class DelayedCall:
             self.callback_func(self.params, response)
 
 
-class AsyncVkApi:
+class AsyncVkApi(VkMethodDispatcher):
     api_version = '5.95'
 
     def __init__(self, group_id, token='', token_file=''):
@@ -80,42 +65,42 @@ class AsyncVkApi:
         self.event_loop = asyncio.get_event_loop()
         self.event_loop.create_task(self.sync())
 
-    def __getattr__(self, item):
-        handler = self
-
-        class _GroupWrapper:
-            def __init__(self, group):
-                self.group = group
-
-            def __getattr__(self, subitem):
-                class _MethodWrapper:
-                    def __init__(self, method):
-                        self.method = method
-
-                    async def __call__(self, **dp):
-                        response = None
-
-                        def cb(req, resp):
-                            nonlocal response
-                            response = resp
-
-                        res = await self.delayed(**dp)
-                        res.callback(cb)
-                        await handler.sync()
-                        return response
-
-                    async def delayed(self, *, _once=False, **dp):
-                        dc = DelayedCall(self.method, dp)
-                        if not _once or dc not in handler.delayed_list:
-                            handler.delayed_list.append(dc)
-                        return dc
-
-                return _MethodWrapper(self.group + '.' + subitem)
-
-        return _GroupWrapper(item)
+    # def __getattr__(self, item):
+    #     handler = self
+    #
+    #     class _GroupWrapper:
+    #         def __init__(self, group):
+    #             self.group = group
+    #
+    #         def __getattr__(self, subitem):
+    #             class _MethodWrapper:
+    #                 def __init__(self, method):
+    #                     self.method = method
+    #
+    #                 async def __call__(self, **dp):
+    #                     response = None
+    #
+    #                     def cb(req, resp):
+    #                         nonlocal response
+    #                         response = resp
+    #
+    #                     res = await self.delayed(**dp)
+    #                     res.callback(cb)
+    #                     await handler.sync()
+    #                     return response
+    #
+    #                 async def delayed(self, *, _once=False, **dp):
+    #                     dc = DelayedCall(self.method, dp)
+    #                     if not _once or dc not in handler.delayed_list:
+    #                         handler.delayed_list.append(dc)
+    #                     return dc
+    #
+    #             return _MethodWrapper(self.group + '.' + subitem)
+    #
+    #     return _GroupWrapper(item)
 
     async def execute(self, code):
-        return await self.apiCall('execute', {"code": code}, full_response=True)
+        return await self.apiCall('execute', {"code": code})
 
     @staticmethod
     def encodeApiCall(s):
@@ -127,7 +112,7 @@ class AsyncVkApi:
 
         if len(dl) == 1:
             dc = dl[0]
-            response = await self.apiCall(dc.method, dc.params, dc.retry)
+            response = await self.apiCall(dc.method, dc.params)
             dc.called(response)
 
         elif len(dl):
@@ -145,7 +130,7 @@ class AsyncVkApi:
         await asyncio.sleep(CALL_INTERVAL)
         self.event_loop.create_task(self.sync())
 
-    async def apiCall(self, method, params, retry=False, full_response=False):
+    async def apiCall(self, method, params):
         current_time = time.time()
         if current_time < self.next_call:
             self.next_call += CALL_INTERVAL
@@ -220,5 +205,3 @@ class AsyncVkApi:
             pass  # This shit for 503 error VK LongPoll
 
         return longpoll_queue
-
-
