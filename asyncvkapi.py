@@ -8,43 +8,6 @@ CALL_INTERVAL = 0.05
 MAX_CALLS_IN_EXECUTE = 25
 
 
-class MethodsWrapper:
-    def __init__(self, foreign_f, method=None, old_methods=[]):
-        self._methods = old_methods
-        if method is not None:
-            self._methods.extend([method])
-        self.foreign_f = foreign_f
-
-    def __getattr__(self, item):
-        new = MethodsWrapper(self.foreign_f, item, self._methods)
-        return new
-
-    def __call__(self, *args, **kwargs):
-        return self.foreign_f('.'.join(self._methods), *args, **kwargs)
-
-
-class MainClass:
-
-    """
-    Главный класс с логикой.
-    Можно пихать сюда все, что угодно
-    """
-    def __init__(self, x, y, z):
-        self.x = x
-        self.y = y
-        self.z = z
-
-    def call_method(self, method, *args, **kwargs):
-        """
-        Метод, который будет вызываться из метод-врапперов
-        """
-        print(f'Method is <{method}>', args, kwargs)
-
-    def __getattr__(self, item):
-        return MethodsWrapper(self.call_method, item)
-
-
-
 class DelayedCall:
     def __init__(self, method, params):
         self.method = method
