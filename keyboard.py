@@ -9,8 +9,12 @@ class colors:
 
 
 class Keyboard:
-    def __init__(self, one_time=False):
-        self.keyboard = {'one_time': one_time, 'buttons': []}  # Simple keyboard, which can close other keyboards
+    def __init__(self, one_time=False, inline=False):
+        if inline:
+            self.keyboard = {'inline': inline, 'buttons': []}  # Simple keyboard, which can close other keyboards
+        else:
+            self.keyboard = {'one_time': one_time, 'buttons': []}  # Simple keyboard, which can close other keyboards
+
         self.buttons = []
         self.new_line_buttons = ('vkpay', 'location', 'open_app')
 
