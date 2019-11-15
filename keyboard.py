@@ -53,7 +53,7 @@ class Keyboard:
             button['action']['type'] = type
             button['action']['label'] = str(label)
             if payload:
-                button['action']['payload'] = str(payload)
+                button['action']['payload'] = json.dumps(payload)
 
             button['color'] = color
 
