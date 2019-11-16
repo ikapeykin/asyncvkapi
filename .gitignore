@@ -65,6 +65,7 @@ fastlane/test_output
 fastlane/readme.md
 .idea
 .DS_Store
+__pycache__
 
 
 
