@@ -125,7 +125,7 @@ class AsyncVkApi:
             async with session.post(url, data=post_params) as resp:
                 json_string = await resp.json()
 
-        return json_string['response']
+        return json_string.get('response')
 
     async def initLongpoll(self):
         r = await self.groups.getLongPollServer(group_id=self.group_id)
