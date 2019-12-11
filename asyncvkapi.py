@@ -183,37 +183,3 @@ class AsyncVkApi:
             pass  # This shit for 503 error VK LongPoll
 
         return longpoll_queue
-
-#
-# def cb_func(req, resp):
-#     print('Its work fun!', req, resp)
-#
-#
-# async def m1(api):
-#     await api.messages.send(peer_id=admin_id, message='#1 Work!', random_id=0)
-#
-#
-# async def m2(api):
-#     api.messages.send.delayed(peer_id=admin_id, message='#2 Work!', random_id=0)
-#
-#
-# async def m3(api):
-#     api.messages.send.delayed(peer_id=admin_id, message='#3 Work!', random_id=0).callback(cb_func)
-#
-#
-# if __name__ == '__main__':
-#     admin_id = 334626257
-#     group_id = 176630236
-#     tokens = ('ccc50800ff82bd80c268b329b3fdd27cc2cdc52bd7a66a3b59c8cc6ba92e8c2e707f0bc0a04ed5aa889a0',)  # TEST TOKEN
-#     api = AsyncVkApi(token=tokens[0], group_id=group_id)
-#     loop = asyncio.get_event_loop()
-#
-#     loop.create_task(m1(api))
-#     loop.create_task(m2(api))
-#     loop.create_task(m3(api))
-#
-#     loop.run_forever()
-    # Calls examples:
-    # await api.group.method(**params)
-    # api.group.method.delayed(**params)
-    # api.group.method.delayed(**params).callback(req, resp)
