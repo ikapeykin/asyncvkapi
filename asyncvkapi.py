@@ -12,7 +12,6 @@ class DelayedCall:
     def __init__(self, method, params):
         self.method = method
         self.params = params
-        self.retry = False
         self.callback_func = None
 
     def __eq__(self, a):
@@ -62,9 +61,9 @@ class AsyncVkApi:
                             nonlocal response
                             response = resp
 
-                        res = await self.delayed(**dp)
-                        res.callback(cb)
+                        self.delayed(**dp).callback(cb)
                         await handler.sync()
+
                         return response
 
                     def delayed(self, *, _once=False, **dp):
@@ -77,20 +76,20 @@ class AsyncVkApi:
 
         return _GroupWrapper(item)
 
-    async def execute(self, code):
-        return await self.apiCall('execute', {"code": code}, full_response=True)
+    async def execute(self, code, full_response=True):
+        return await self.apiCall('execute', {"code": code}, full_response=full_response)
 
     @staticmethod
     def encodeApiCall(s):
         return "API." + s.method + '(' + json.dumps(s.params, ensure_ascii=False) + ')'
 
     async def sync(self):
-        dl = self.delayed_list[:25]
-        self.delayed_list = self.delayed_list[25:]
+        dl = self.delayed_list[:self.max_delayed]
+        self.delayed_list = self.delayed_list[self.max_delayed:]
 
         if len(dl) == 1:
             dc = dl[0]
-            response = await self.apiCall(dc.method, dc.params, dc.retry)
+            response = await self.apiCall(dc.method, dc.params)
             dc.called(response)
 
         elif len(dl):
@@ -99,8 +98,8 @@ class AsyncVkApi:
                 query.append(self.encodeApiCall(i) + ',')
             query.append('];')
             query = ''.join(query)
-            response = await self.execute(query)
 
+            response = await self.execute(query)
             if 'response' in response:
                 for dc, r in zip(dl, response['response']):
                     dc.called(r)
@@ -108,7 +107,7 @@ class AsyncVkApi:
         await asyncio.sleep(CALL_INTERVAL)
         self.event_loop.create_task(self.sync())
 
-    async def apiCall(self, method, params, retry=False, full_response=False):
+    async def apiCall(self, method, params, full_response=False):
         current_time = time.time()
         if current_time < self.next_call:
             self.next_call += CALL_INTERVAL
@@ -125,7 +124,14 @@ class AsyncVkApi:
             async with session.post(url, data=post_params) as resp:
                 json_string = await resp.json()
 
-        return json_string.get('response')
+        if json_string.get('response'):
+            if not full_response:
+                return json_string.get('response')
+            else:
+                return json_string
+
+        else:
+            return None  # please, end errors handling
 
     async def initLongpoll(self):
         r = await self.groups.getLongPollServer(group_id=self.group_id)
@@ -174,7 +180,6 @@ class AsyncVkApi:
                         msg['attachments'] = feed.get('attachments')
 
                         longpoll_queue.append(msg)
-
 
             elif data_array['failed'] != 1:
                 await self.initLongpoll()
