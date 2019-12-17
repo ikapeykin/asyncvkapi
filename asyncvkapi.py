@@ -13,17 +13,19 @@ class DelayedCall:
         self.method = method
         self.params = params
         self.callback_func = None
+        self.callback_data = None
 
     def __eq__(self, a):
         return self.method == a.method and self.params == a.params and self.callback_func is None and a.callback_func is None
 
-    def callback(self, func):
+    def callback(self, func, **kwargs):
         self.callback_func = func
+        self.callback_data = kwargs
         return self
 
     def called(self, response):
         if self.callback_func:
-            self.callback_func(self.params, response)
+            self.callback_func(self.params, response, **self.callback_data)
 
 
 class AsyncVkApi:
