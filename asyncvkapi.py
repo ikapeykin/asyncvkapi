@@ -99,7 +99,7 @@ class AsyncVkApi:
         return self.session.close()
 
     async def execute(self, code, full_response=True):
-        return await self.apiCall('execute', {"code": code}, full_response=full_response)
+        return await self.api_call('execute', {"code": code}, full_response=full_response)
 
     async def sync(self):
         dl = self.delayed_list[:self.max_delayed]
@@ -107,7 +107,7 @@ class AsyncVkApi:
 
         if len(dl) == 1:
             dc = dl[0]
-            response = await self.apiCall(dc.method, dc.params)
+            response = await self.api_call(dc.method, dc.params)
             dc.called(response)
 
         elif len(dl):
@@ -125,7 +125,7 @@ class AsyncVkApi:
         await asyncio.sleep(CALL_INTERVAL)
         self.event_loop.create_task(self.sync())
 
-    async def apiCall(self, method, params, full_response=False):
+    async def api_call(self, method, params, full_response=False):
         current_time = time.time()
         if current_time < self.next_call:
             self.next_call += CALL_INTERVAL
@@ -150,19 +150,19 @@ class AsyncVkApi:
         else:
             return None  # please, end errors handling
 
-    async def initLongpoll(self):
+    async def init_longpoll(self):
         r = await self.groups.getLongPollServer(group_id=self.group_id)
 
         if not r:
-            await self.initLongpoll()
+            await self.init_longpoll()
 
         self.longpoll = {'server': r['server'], 'key': r['key'], 'ts': self.longpoll.get('ts') or r['ts']}
 
-    async def getLongpoll(self):
+    async def get_longpoll(self):
         longpoll_queue = []
 
         if not self.longpoll.get('server'):
-            await self.initLongpoll()
+            await self.init_longpoll()
 
         url = '{}?act=a_check&key={}&ts={}&wait=25&'.format(
             self.longpoll['server'], self.longpoll['key'], self.longpoll['ts']
@@ -199,7 +199,7 @@ class AsyncVkApi:
                         longpoll_queue.append(msg)
 
             elif data_array['failed'] != 1:
-                await self.initLongpoll()
+                await self.init_longpoll()
 
         except Exception as e:
             pass  # This shit for 503 error VK LongPoll
