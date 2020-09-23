@@ -41,8 +41,13 @@ class AsyncVkApi:
         self.token = token
         self.token_file = token_file
 
+        self.session = self.open_connection()
+
         self.event_loop = asyncio.get_event_loop()
         self.event_loop.create_task(self.sync())
+
+    def __del__(self):
+        self.close_connection()
 
     def __getattr__(self, item):
         handler = self
@@ -78,12 +83,23 @@ class AsyncVkApi:
 
         return _GroupWrapper(item)
 
-    async def execute(self, code, full_response=True):
-        return await self.apiCall('execute', {"code": code}, full_response=full_response)
+    @staticmethod
+    def open_connection():
+        headers = {
+            'Connection': 'keep-alive'  # Need to save connection with vk.com
+        }
+
+        return aiohttp.ClientSession(version=aiohttp.HttpVersion11, headers=headers)
 
     @staticmethod
-    def encodeApiCall(s):
+    def encode_api_call(s):
         return "API." + s.method + '(' + json.dumps(s.params, ensure_ascii=False) + ')'
+
+    def close_connection(self):
+        return self.session.close()
+
+    async def execute(self, code, full_response=True):
+        return await self.apiCall('execute', {"code": code}, full_response=full_response)
 
     async def sync(self):
         dl = self.delayed_list[:self.max_delayed]
@@ -97,7 +113,7 @@ class AsyncVkApi:
         elif len(dl):
             query = ['return[']
             for num, i in enumerate(dl):
-                query.append(self.encodeApiCall(i) + ',')
+                query.append(self.encode_api_call(i) + ',')
             query.append('];')
             query = ''.join(query)
 
@@ -122,9 +138,8 @@ class AsyncVkApi:
         url = f'https://api.vk.com/method/{method}?access_token={self.token}'
         post_params = params
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, data=post_params) as resp:
-                json_string = await resp.json()
+        async with self.session.post(url, data=post_params) as resp:
+            json_string = await resp.json()
 
         if json_string.get('response'):
             if not full_response:
